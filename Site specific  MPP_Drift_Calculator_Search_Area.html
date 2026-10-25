@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MPP Drift Calculator + Coastline Search Area</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}body{font:14px Arial,sans-serif;margin:0;color:#17212b;background:#eef1f4}
+header{padding:10px 16px;background:#16324f;color:#fff}h1{font-size:18px;margin:0 0 3px}header p{margin:0;font-size:12px;opacity:.85}
+.grid{display:grid;grid-template-columns:370px 1fr;gap:12px;padding:12px;align-items:start}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:#fff;border-radius:6px;padding:10px 14px;box-shadow:0 1px 3px #0002;margin-bottom:12px}
+h3{font-size:13px;margin:12px 0 6px;padding-bottom:3px;border-bottom:2px solid #225da8;color:#16324f}h3:first-child{margin-top:2px}
+.row{display:flex;gap:6px;align-items:end;margin:5px 0;flex-wrap:wrap}
+label{display:flex;flex-direction:column;font-size:11px;gap:2px;color:#444}
+.lead{font-size:12px;font-weight:bold;width:62px;padding-bottom:7px}
+input,select{padding:6px;border:1px solid #9aa6b2;border-radius:4px;font:16px Arial,sans-serif;background:#fff9c4}
+input.w1{width:70px}input.w2{width:92px}input.w3{width:108px}select{max-width:100%}
+input.bad{border-color:#c62828;background:#ffd9d9}
+input[readonly]{background:#e8f3ea}input[readonly].need{background:#ffd9d9;border-color:#c62828}
+.info{font-size:12px;color:#333;padding-bottom:7px}.info b{font-size:13px}
+.warn{background:#ffd9d9;border:1px solid #c62828;color:#8a1010;font-weight:bold;padding:6px 8px;border-radius:4px;font-size:13px;margin:4px 0}.hint{font-size:11px;color:#555;margin:2px 0 4px}
+.btn{padding:8px 14px;background:#225da8;color:#fff;border:0;border-radius:4px;cursor:pointer;margin-top:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
+.card{background:#eaf6ee;border:1px solid #b9dcc4;border-radius:5px;padding:7px 10px}
+.card .t{font-size:11px;color:#355;text-transform:uppercase;letter-spacing:.03em}.card .v{font-size:16px;font-weight:bold;margin-top:2px}.card .s{font-size:12px;color:#355}
+.card.mpp{background:#fdeaea;border-color:#e3a5a5}.card.mpp .t{color:#933}
+.cp{margin-top:6px;display:flex;gap:6px;align-items:center;font-size:12px;color:#2e7d32}#cpMsg{white-space:nowrap}.cbtn{padding:4px 10px;background:#b21f35;color:#fff;border:0;border-radius:4px;cursor:pointer;font-size:12px}.cbtn:disabled{background:#bbb;cursor:default}
+.checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;font-size:12px}
+.chk{padding:3px 8px;border-radius:10px;background:#ddd}.chk.ok{background:#c8e6c9}.chk.no{background:#ffcdd2;font-weight:bold}
+#map{height:62vh;min-height:380px;border-radius:6px}
+.note{font-size:12px;color:#444;padding:8px 2px}.legend{background:#fff;padding:8px 10px;border-radius:4px;line-height:1.6;box-shadow:0 1px 5px #888}
+</style></head>
+<body>
+<header><h1>MPP Drift Calculator + Coastline Search Area</h1><p>Yellow = enter values · Green = calculated · results and map update as you type.</p></header>
+<div class="grid">
+<div>
+<div class="panel">
+<h3>Rescue Vessel Departure Location</h3>
+<div class="warn" id="baseWarn">Enter Rescue Vessel Departure Location</div>
+<div class="row"><span class="lead">Latitude</span><label>Degrees<input id="bLatD" class="w1 base" inputmode="decimal"></label><label>Dec. minutes<input id="bLatM" class="w2 base" inputmode="decimal"></label><label>N / S<select id="bLatH" class="base"><option>S</option><option>N</option></select></label></div>
+<div class="row"><span class="lead">Longitude</span><label>Degrees<input id="bLonD" class="w1 base" inputmode="decimal"></label><label>Dec. minutes<input id="bLonM" class="w2 base" inputmode="decimal"></label><label>E / W<select id="bLonH" class="base"><option>E</option><option>W</option></select></label></div>
+<div class="hint">Saved on this device and kept when Reset all is pressed. Used for the departure location to LKP distance.</div>
+<h3>1 · Last Known Position (LKP)</h3>
+<div class="row"><span class="lead">Latitude</span><label>Degrees<input id="latD" class="w1" inputmode="decimal"></label><label>Dec. minutes<input id="latM" class="w2" inputmode="decimal"></label><label>N / S<select id="latH"><option>S</option><option>N</option></select></label></div>
+<div class="row"><span class="lead">Longitude</span><label>Degrees<input id="lonD" class="w1" inputmode="decimal"></label><label>Dec. minutes<input id="lonM" class="w2" inputmode="decimal"></label><label>E / W<select id="lonH"><option>E</option><option>W</option></select></label></div>
+<div class="row"><label>LKP time (24 hr)<input id="t0" class="w2" maxlength="4" inputmode="numeric" placeholder="0400"></label><label>Current time (24 hr)<input id="t1" class="w2" maxlength="4" inputmode="numeric" placeholder="0900"></label><div class="info">Elapsed<br><b id="elapsed">—</b></div></div>
+<h3>2 · Current vector</h3>
+<div class="row"><label>Metres drift over 6 min<input id="drift" class="w3" inputmode="decimal"></label><label>Direction of current (°T)<input id="curDir" class="w3" inputmode="decimal"></label><div class="info">Speed<br><b id="curKt">—</b></div></div>
+<h3>3 · Leeway vector</h3>
+<div class="row"><label>Wind speed (kt)<input id="wind" class="w2" inputmode="decimal"></label><label>Wind from (°M)<input id="windDir" class="w2" inputmode="decimal"></label><label>Mag. variation (°)<input id="magVar" class="w2" inputmode="decimal" value="12.0"></label></div>
+<h3>4 · Drift Object Selection</h3>
+<div class="row"><label>Category<select id="cat"></select></label></div>
+<div class="row"><label>Sub-category<select id="sub"></select></label></div>
+<div class="row"><label>Primary leeway descriptor<select id="pri"></select></label></div>
+<div class="row"><label>Secondary leeway descriptor<select id="sec"></select></label></div>
+<div class="row"><label>Multiplier<input id="mult" class="w2 need" readonly></label><label>Modifier (kt)<input id="modf" class="w2 need" readonly></label><div class="info">Leeway speed<br><b id="lwKt">—</b></div></div>
+<button class="btn" type="button" onclick="resetAll()">Reset all</button>
+</div>
+</div>
+<div>
+<div class="panel">
+<div class="cards">
+<div class="card mpp"><div class="t">Most Probable Position (MPP)</div><div class="v" id="mppDM">—</div><div class="s" id="mppDD">&nbsp;</div><div class="cp"><button class="cbtn" id="cpDM" type="button" disabled onclick="copyMPP('dm')">Copy DM</button><button class="cbtn" id="cpDD" type="button" disabled onclick="copyMPP('dd')">Copy DD</button><span id="cpMsg"></span></div></div>
+<div class="card"><div class="t">LKP → MPP</div><div class="v" id="distBrg">—</div><div class="s" id="srch">&nbsp;</div></div>
+<div class="card"><div class="t">Intermediate position (current only)</div><div class="v" id="intDM">—</div><div class="s" id="vecs">&nbsp;</div></div>
+<div class="card"><div class="t" id="harbT">Departure Location to LKP</div><div class="v" id="harb">—</div><div class="s">at 10 kt</div></div>
+</div>
+<div class="checks" id="checks"></div>
+</div>
+<div id="map"></div>
+<div class="note">Blue = LKP · Red = MPP · amber = intermediate position · blue line = current vector · amber line = leeway vector · dashed line = straight-line separation. Search Area rule: circle diameter 6 Nm when LKP–MPP distance ≤ 8 Nm; otherwise diameter = 6 + distance/8 Nm. Square is centred on MPP and aligned with the LKP–MPP line. Leeway data are from your workbook. This is a visual aid only; use the ship’s navigation system for authoritative plotting. Internet access is required for the coastline background.</div>
+</div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const R=3440.065,rad=x=>x*Math.PI/180,deg=x=>x*180/Math.PI,mod=(a,n)=>((a%n)+n)%n;
+// Leeway table copied from the workbook: [category, sub-category, primary, secondary, multiplier, modifier, angle]
+const DATA=[["PIW","Default","Default","Default",0.011,0.07],["PIW","Vertical","Default","Default",0.005,0.07],["PIW","Sitting","Default","Default",0.012,0],["PIW","Horizontal","Survival Suit","(None)",0.014,0.1],["PIW","Horizontal","Scuba Suit","(None)",0.007,0.08],["PIW","Horizontal","Deceased","(None)",0.015,0.08],["Survival Craft","Maritime Life Rafts","No Ballast Systems","Default",0.042,0.03],["Survival Craft","Maritime Life Rafts","No Ballast Systems","No Canopy No Drogue",0.057,0.21],["Survival Craft","Maritime Life Rafts","No Ballast Systems","No Canopy With Drogue",0.044,-0.2],["Survival Craft","Maritime Life Rafts","No Ballast Systems","Canopy No Drogue",0.037,0.11],["Survival Craft","Maritime Life Rafts","No Ballast Systems","Canopy without Drogue",0.03,0],["Survival Craft","Maritime Life Rafts","Shallow Ballast System and Canopy","Default",0.029,0],["Survival Craft","Maritime Life Rafts","Shallow Ballast System and Canopy","No Drogue",0.032,-0.02],["Survival Craft","Maritime Life Rafts","Shallow Ballast System and Canopy","With Drogue",0.025,0.01],["Survival Craft","Maritime Life Rafts","Shallow Ballast System and Canopy","Capsized",0.017,-0.1],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 4-6 pers","Default",0.029,0.04],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 4-6 pers","No Drogue",0.038,-0.04],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 4-6 pers","No Drogue Light Loading",0.038,-0.04],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 4-6 pers","No Drogue Heavy Loading",0.036,-0.03],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 15-25 pers","Default",0.036,-0.09],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 15-25 pers","With Drogue",0.018,0.03],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 15-25 pers","With Drogue Light Loading",0.016,0.05],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 15-25 pers","With Drogue Heavy Loading",0.021,0],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 15-25 pers","No Drogue Light Loading",0.039,-0.06],["Survival Craft","Maritime Life Rafts","Deep Ballast Systems and Canopies 15-25 pers","No Drogue Heavy Loading",0.031,-0.07],["Survival Craft","Maritime Life Rafts","Capsized","(None)",0.009,0],["Survival Craft","Maritime Life Rafts","Swamped","(None)",0.01,-0.04],["Survival Craft","Other Maritime Survival Craft","Life Capsule","(None)",0.038,-0.08],["Survival Craft","Other Maritime Survival Craft","USCG Sea Rescue Kit","(None)",0.025,-0.04],["Survival Craft","Aviation Life Rafts"," No Ballast with Canopy with Evac Slide","4-6 Person no Drogue",0.037,0.11],["Survival Craft","Aviation Life Rafts"," No Ballast with Canopy with Evac Slide","46 Person",0.028,-0.01],["Person-Powered Craft","Sea Kayak","With Person on Aft Deck","(None)",0.011,0.24],["Person-Powered Craft","Surf board","With Person ","(None)",0.02,0],["Person-Powered Craft","Windsurfer","With Person","Mast and Sail in Water",0.023,0.1],["Sailing Vessels ","Mono-Hull","Full Keel","Deep Draft",0.03,0],["Sailing Vessels ","Mono-Hull","Fin Keel","Shoal Draft",0.04,0],["Power Vessels","Skiffs","Flat Bottom","Boston Whaler",0.034,0.04],["Power Vessels","Skiffs","V-Hull","Std Configuration",0.03,0.08],["Power Vessels","Skiffs","Swamped","(None)",0.017,0],["Power Vessels","Sport Boats","Cuddy Cabin","Modified V-Hull",0.069,-0.08],["Power Vessels","Sport Fisher","Center Console","Open Cockpit",0.06,-0.09],["Power Vessels","Default","Default","(None)",0.037,0.02],["Power Vessels","Sampans","(None)","(None)",0.04,0],["Power Vessels","Commercial Fishing Vessels","Side-Stern Trawler","(None)",0.042,0],["Power Vessels","Commercial Fishing Vessels","Longliners","(None)",0.037,0],["Power Vessels","Commercial Fishing Vessels","Junk","(None)",0.027,0.1],["Power Vessels","Commercial Fishing Vessels","Gill-Netter","With Rear Reel",0.04,0.01],["Power Vessels","Coastal Freighter","(None)","(None)",0.028,0],["Boating Debris","Default","Default","(None)",0.013,0.27],["Boating Debris","Fishing Vessel Debris","(None)","(None)",0.02,0],["Boating Debris","Bait/Wharf Box","Holds 1 Cubic Meter of Ice","Lightly loaded",0.026,0.18],["Boating Debris","Bait/Wharf Box","Holds 1 Cubic Meter of Ice","Fully loaded",0.016,0.16]];
+//CALC-START
+const hm=t=>Math.floor(t/100)+(t%100)/60;
+function calc(i){
+ const o={},ok=(...v)=>v.every(Number.isFinite),z=v=>Number.isFinite(v)?v:0;
+ if(ok(i.bLatD,i.bLonD)){
+  o.bLat=(i.bLatD+z(i.bLatM)/60)*(i.bLatH==='S'?-1:1);o.bLon=(i.bLonD+z(i.bLonM)/60)*(i.bLonH==='W'?-1:1);
+  o.baseOk=Math.abs(o.bLat)<=90&&Math.abs(o.bLon)<=180;
+ }
+ if(ok(i.latD,i.lonD)){
+  o.lat=(i.latD+z(i.latM)/60)*(i.latH==='S'?-1:1);o.lon=(i.lonD+z(i.lonM)/60)*(i.lonH==='W'?-1:1);
+  if(o.baseOk){
+   o.harbDist=Math.acos(Math.min(1,Math.max(-1,Math.cos(rad(90-o.bLat))*Math.cos(rad(90-o.lat))+Math.sin(rad(90-o.bLat))*Math.sin(rad(90-o.lat))*Math.cos(rad(o.bLon-o.lon)))))*R;
+   o.harbMin=o.harbDist/10*60;
+  }
+ }
+ if(ok(i.t0,i.t1))o.hours=mod(hm(i.t1)-hm(i.t0),24);
+ if(ok(i.drift))o.curKt=i.drift*10/1852;
+ if(o.lat!==undefined&&o.hours!==undefined&&o.curKt!==undefined&&ok(i.curDir)){
+  o.curLen=o.curKt*o.hours;const d=o.curLen/R,b=rad(i.curDir),p=rad(o.lat);
+  o.iLat=deg(Math.asin(Math.sin(p)*Math.cos(d)+Math.cos(p)*Math.sin(d)*Math.cos(b)));
+  o.iLon=mod(o.lon+deg(Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p),Math.cos(d)-Math.sin(p)*Math.sin(rad(o.iLat))))+180,360)-180;
+ }
+ if(ok(i.wind,i.mult,i.modf)){
+  o.lwKt=i.wind*i.mult+i.modf;
+  if(ok(i.windDir,i.magVar)){o.windT=mod(i.windDir+i.magVar,360);o.lwDir=o.windT<180?o.windT+180:o.windT-180;}
+  if(o.hours!==undefined)o.lwLen=o.lwKt*o.hours;
+ }
+ if(o.iLat!==undefined&&o.lwLen!==undefined&&o.lwDir!==undefined){
+  const d=o.lwLen/R,b=rad(o.lwDir),p=rad(o.iLat);
+  o.mLat=deg(Math.asin(Math.sin(p)*Math.cos(d)+Math.cos(p)*Math.sin(d)*Math.cos(b)));
+  o.mLon=mod(o.iLon+deg(Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p),Math.cos(d)-Math.sin(p)*Math.sin(rad(o.mLat))))+180,360)-180;
+  const p1=rad(o.lat),p2=rad(o.mLat),dl=rad(o.mLon-o.lon);
+  o.brg=mod(deg(Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl)))+360,360);
+  o.dist=R*Math.acos(Math.min(1,Math.max(-1,Math.sin(p1)*Math.sin(p2)+Math.cos(p1)*Math.cos(p2)*Math.cos(dl))));
+  o.diam=o.dist<=8?6:6+o.dist/8;
+  o.chkVec=o.dist<=o.curLen+o.lwLen?'PASS':'CHECK';
+ }
+ o.chkLkp=o.lat===undefined?'CHECK INPUT':(Math.abs(o.lat)<=90&&Math.abs(o.lon)<=180?'PASS':'CHECK');
+ o.chkCur=!ok(i.curDir)?'CHECK INPUT':(i.curDir>=0&&i.curDir<=360?'PASS':'CHECK');
+ o.chkLw=o.lwDir===undefined?'CHECK INPUT':(o.lwDir>=0&&o.lwDir<=360?'PASS':'CHECK');
+ return o;
+}
+function dm(x,pos,neg){let a=Math.abs(x),d=Math.floor(a),m=(a-d)*60;if(m.toFixed(4)==='60.0000'){d++;m=0}return d+' '+m.toFixed(4).padStart(7,'0')+' '+(x<0?neg:pos)}
+//CALC-END
+const $=id=>document.getElementById(id),num=id=>{const v=$(id).value.trim().replace(',','.');return v===''?NaN:Number(v)};
+const timeVal=id=>{const v=$(id).value.trim();if(!/^\d{1,4}$/.test(v))return NaN;const n=+v;return(Math.floor(n/100)<=23&&n%100<=59)?n:NaN};
+// ---- leeway selectors (cascading, as in the workbook) ----
+const keys=['cat','sub','pri','sec'];
+function fill(level){const s=$(keys[level]);s.innerHTML='';s.add(new Option('(Select)','(Select)'));
+ const rows=DATA.filter(r=>keys.slice(0,level).every((k,j)=>r[j]===$(k).value));
+ [...new Set(rows.map(r=>r[level]))].forEach(v=>s.add(new Option(v,v)));}
+function leewayRow(){return DATA.find(r=>keys.every((k,j)=>r[j]===$(k).value))}
+keys.forEach((k,L)=>$(k).addEventListener('change',()=>{for(let n=L+1;n<4;n++)fill(n);update();}));
+fill(0);fill(1);fill(2);fill(3);
+// ---- map ----
+let map=null,layerGroup=null;
+try{
+ if(!window.L)throw new Error('Leaflet not loaded');
+ map=L.map('map').setView([-32.12,152.64],10);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles © Esri'}).addTo(map);
+ layerGroup=L.layerGroup().addTo(map);
+}catch(e){
+ map=null;layerGroup=null;
+ $('map').innerHTML='<div class="note"><b>Map unavailable</b> — Leaflet or the map tiles could not be loaded (no internet connection?). The calculator and results below still work.</div>';
+ $('map').style.height='auto';$('map').style.minHeight='0';
+}
+function dest(lat,lon,bearingDeg,nm){const d=nm/R,b=rad(bearingDeg),p1=rad(lat),l1=rad(lon);const p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(b));const l2=l1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2));return[deg(p2),((deg(l2)+540)%360)-180]}
+function plot(o){
+ if(!map||!layerGroup)return;
+ layerGroup.clearLayers();const a=[o.lat,o.lon],b=[o.mLat,o.mLon],c=[o.iLat,o.iLon],d=o.dist,bearing=o.brg,diameter=o.diam,radius=diameter/2;
+ layerGroup.addLayer(L.circleMarker(a,{radius:7,color:'#fff',weight:2,fillColor:'#0875e1',fillOpacity:1}).bindPopup('LKP — Last Known Position<br>'+a[0].toFixed(6)+'°, '+a[1].toFixed(6)+'°'));
+ layerGroup.addLayer(L.circleMarker(b,{radius:7,color:'#fff',weight:2,fillColor:'#d71920',fillOpacity:1}).bindPopup('MPP — Most Probable Position<br>'+b[0].toFixed(6)+'°, '+b[1].toFixed(6)+'°'));
+ layerGroup.addLayer(L.circleMarker(c,{radius:4,color:'#fff',weight:1,fillColor:'#e08a00',fillOpacity:1}).bindPopup('Intermediate position (current only)<br>'+c[0].toFixed(6)+'°, '+c[1].toFixed(6)+'°'));
+ L.polyline([a,c],{color:'#0875e1',weight:2}).addTo(layerGroup).bindPopup('Current vector: '+o.curLen.toFixed(2)+' Nm');
+ L.polyline([c,b],{color:'#e08a00',weight:2}).addTo(layerGroup).bindPopup('Leeway vector: '+o.lwLen.toFixed(2)+' Nm');
+ L.polyline([a,b],{color:'#d71920',weight:3,dashArray:'7 6'}).addTo(layerGroup).bindPopup('LKP–MPP separation: '+d.toFixed(2)+' Nm');
+ const corners=[45,135,225,315].map(g=>dest(b[0],b[1],bearing+g,radius*Math.SQRT2));corners.push(corners[0]);
+ L.polygon(corners,{color:'#287e47',weight:2,fillColor:'#45b96b',fillOpacity:.04}).addTo(layerGroup).bindPopup('Search Area square<br>Side: '+diameter.toFixed(2)+' Nm<br>Circle diameter: '+diameter.toFixed(2)+' Nm');
+ L.circle(b,{radius:radius*1852,color:'#b21f35',weight:2,fillColor:'#8b5fbf',fillOpacity:.10}).addTo(layerGroup).bindPopup('Search Area construction circle<br>Diameter: '+diameter.toFixed(2)+' Nm<br>Radius: '+radius.toFixed(2)+' Nm');
+ map.fitBounds(L.latLngBounds([a,b,c,...corners]).pad(.18));
+}
+// ---- update ----
+const set=(id,t)=>{$(id).textContent=t},f=(x,n)=>Number.isFinite(x)?x.toFixed(n):'—';
+let timer,lastMPP=null;
+function copyMPP(kind){if(!lastMPP)return;const t=kind==='dm'?lastMPP.dm:lastMPP.dd;const done=()=>{set('cpMsg','\u2713 Copied');setTimeout(()=>set('cpMsg',''),4000)};
+ const fb=()=>{const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');done()}catch(e){set('cpMsg','Copy failed')}a.remove()};
+ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done,fb);else fb();}
+function update(){
+ const row=leewayRow();
+ const i={bLatD:num('bLatD'),bLatM:num('bLatM'),bLatH:$('bLatH').value,bLonD:num('bLonD'),bLonM:num('bLonM'),bLonH:$('bLonH').value,latD:num('latD'),latM:num('latM'),latH:$('latH').value,lonD:num('lonD'),lonM:num('lonM'),lonH:$('lonH').value,
+  t0:timeVal('t0'),t1:timeVal('t1'),drift:num('drift'),curDir:num('curDir'),wind:num('wind'),windDir:num('windDir'),magVar:num('magVar'),
+  mult:row?row[4]:NaN,modf:row?row[5]:NaN};
+ ['t0','t1'].forEach(k=>$(k).classList.toggle('bad',$(k).value.trim()!==''&&!Number.isFinite(i[k])));
+ $('mult').value=row?row[4]:'';$('modf').value=row?row[5]:'';['mult','modf'].forEach(k=>$(k).classList.toggle('need',!row));
+ const o=calc(i);
+ set('elapsed',o.hours!==undefined?f(o.hours,2)+' h':'—');
+ set('curKt',f(o.curKt,3)+(o.curKt!==undefined?' kt':''));
+ set('lwKt',f(o.lwKt,3)+(o.lwKt!==undefined?' kt':''));
+ const bTyped=Number.isFinite(i.bLatD)&&Number.isFinite(i.bLonD);
+ $('baseWarn').style.display=o.baseOk?'none':'block';
+ $('baseWarn').textContent=bTyped&&!o.baseOk?'Check Rescue Vessel Departure Location (latitude max 90°, longitude max 180°)':'Enter Rescue Vessel Departure Location';
+ set('harb',!o.baseOk?(bTyped?'Check Rescue Vessel Departure Location':'Enter Rescue Vessel Departure Location'):(o.harbDist!==undefined?f(o.harbDist,2)+' Nm · '+f(o.harbMin,0)+' min':'—'));
+ set('intDM',o.iLat!==undefined?dm(o.iLat,'N','S')+'  '+dm(o.iLon,'E','W'):'—');
+ set('vecs',o.curLen!==undefined?'Current vector '+f(o.curLen,2)+' Nm'+(o.lwLen!==undefined?' · Leeway vector '+f(o.lwLen,2)+' Nm':''):'\u00a0');
+ if(o.mLat!==undefined){
+  set('mppDM',dm(o.mLat,'N','S')+'   '+dm(o.mLon,'E','W'));set('mppDD',o.mLat.toFixed(6)+'°, '+o.mLon.toFixed(6)+'°');
+  set('distBrg',f(o.dist,2)+' Nm @ '+f(o.brg,1)+'°T');set('srch',f(o.diam,2)+' Nm circle · square side '+f(o.diam,2)+' Nm');
+  lastMPP={dm:dm(o.mLat,'N','S')+' '+dm(o.mLon,'E','W'),dd:o.mLat.toFixed(6)+', '+o.mLon.toFixed(6)};$('cpDM').disabled=$('cpDD').disabled=false;
+  clearTimeout(timer);timer=setTimeout(()=>plot(o),250);
+ }else{['mppDM','distBrg'].forEach(k=>set(k,'—'));['mppDD','srch'].forEach(k=>set(k,'Complete all inputs'));lastMPP=null;$('cpDM').disabled=$('cpDD').disabled=true;clearTimeout(timer);if(layerGroup)layerGroup.clearLayers();}
+ const names=[['LKP position',o.chkLkp],['Current direction',o.chkCur],['Leeway direction',o.chkLw],['Vector check',o.chkVec||'CHECK INPUT']];
+ $('checks').innerHTML=names.map(([n,v])=>'<span class="chk '+(v==='PASS'?'ok':v==='CHECK'?'no':'')+'">'+n+': '+v+'</span>').join('');
+ return o;
+}
+document.querySelectorAll('input:not([readonly]),#latH,#lonH,#bLatH,#bLonH').forEach(e=>e.addEventListener('input',update));
+function resetAll(){document.querySelectorAll('input:not([readonly]):not(#magVar):not(.base)').forEach(e=>e.value='');$('latH').value='S';$('lonH').value='E';fill(0);fill(1);fill(2);fill(3);update();if(map)map.setView([-32.12,152.64],10);}
+// Remember the magnetic variation between sessions (falls back to 12.0 if browser storage is unavailable).
+try{const sv=localStorage.getItem('mppMagVar');if(sv!==null)$('magVar').value=sv;}catch(e){}
+$('magVar').addEventListener('input',()=>{try{localStorage.setItem('mppMagVar',$('magVar').value)}catch(e){}});
+// Remember the Rescue Vessel Departure Location on this device (survives Reset all).
+const BASE_IDS=['bLatD','bLatM','bLatH','bLonD','bLonM','bLonH'];
+try{const sb=JSON.parse(localStorage.getItem('mppBase')||'null');if(sb)BASE_IDS.forEach(k=>{if(typeof sb[k]==='string')$(k).value=sb[k]});}catch(e){}
+document.querySelectorAll('.base').forEach(e=>e.addEventListener('input',()=>{try{const o={};BASE_IDS.forEach(k=>o[k]=$(k).value);localStorage.setItem('mppBase',JSON.stringify(o))}catch(e){}}));
+update();
+</script></body></html>
